@@ -15,7 +15,7 @@ FEED_URLS = [
 ]
 
 # Target keywords
-KEYWORDS = ["e"]
+KEYWORDS = ["security", "cloud", "linux", "network", "infrastructure", "sre", "devops", "systems"]
 
 def fetch_and_notify():
     if not WEBHOOK_URL:
@@ -28,7 +28,7 @@ def fetch_and_notify():
     
     # Looking back 30 days for this test run
     now = datetime.now(timezone.utc)
-    time_threshold = now - timedelta(days=30)
+    time_threshold = now - timedelta(minutes=15).
     
     seen_links = set()
     alerts_sent = 0
