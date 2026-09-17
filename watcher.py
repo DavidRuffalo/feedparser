@@ -75,7 +75,7 @@ DEFAULT_CONFIG: dict = {
     # Auto-discover ATS boards from the job URLs in the aggregator data, and poll them directly.
     "auto_targets": {
         "enabled": True,
-        "ats": ["greenhouse", "lever", "ashby"],   # add "workday" if you accept slower runs
+        "ats": ["greenhouse", "lever", "ashby", "workday"],   # add "workday" if you accept slower runs
         "max_boards": 800,
         "workers": 24,
         "exclude": [],                              # board tokens to skip, e.g. ["andurilindustries"]
