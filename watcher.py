@@ -384,10 +384,11 @@ def evaluate(l: Listing, cfg: dict, rx: dict) -> Optional[str]:
     if not any(l.source == a["name"] for a in cfg["aggregators"]):
         score += 1                           # came straight from the company's ATS
 
-    if not matched and not l.priority:
+    any_intern_ok = l.priority and cfg.get("priority_any_intern", False)
+    if not matched and not any_intern_ok:
         return None
     l.score, l.matched = score, matched
-    return "instant" if (title_hit or l.priority) and score >= cfg["instant_min_score"] else "digest"
+    return "instant" if (title_hit or any_intern_ok) and score >= cfg["instant_min_score"] else "digest"
 
 
 # --------------------------------------------------------------------------- discord
