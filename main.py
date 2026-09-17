@@ -25,7 +25,7 @@ def fetch_and_notify():
     
     # Only look at commits from the last 15 minutes
     now = datetime.now(timezone.utc)
-    time_threshold = now - timedelta(days=30)    
+    time_threshold = now - timedelta(minutes=15)    
     # Track links we've already alerted about during this run to prevent duplicates
     seen_links = set()
 
