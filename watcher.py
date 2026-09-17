@@ -28,6 +28,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import zlib
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -79,7 +80,8 @@ DEFAULT_CONFIG: dict = {
         "ats": ["greenhouse", "lever", "ashby"],   # add "workday" if you accept slower runs
         "max_boards": 800,
         "workers": 24,                              # concurrency for Greenhouse / Lever / Ashby
-        "workday_workers": 3,                       # Workday tenants share infra and rate-limit hard; keep this low
+        "workday_workers": 6,                       # concurrency inside the selected Workday shard
+        "workday_shards": 5,                        # rotate auto-discovered Workday boards across runs
         "workday_delay": 0.5,                       # seconds between Workday page requests
         "exclude": [],                              # board tokens to skip, e.g. ["andurilindustries"]
     },
@@ -595,6 +597,22 @@ def load_state(path: Path) -> dict:
     return s
 
 
+def save_state(path: Path, state: dict) -> None:
+    """Write state atomically so a reboot cannot leave a half-written JSON file."""
+    tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    try:
+        with tmp.open("w", encoding="utf-8") as f:
+            json.dump(state, f, indent=0)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, path)
+    finally:
+        try:
+            tmp.unlink()
+        except FileNotFoundError:
+            pass
+
+
 def hours_since(iso: Optional[str]) -> float:
     d = parse_dt(iso)
     return float("inf") if d is None else (NOW - d).total_seconds() / 3600
@@ -697,6 +715,20 @@ def poll_boards(targets: list[dict], workers: int) -> tuple[list[Listing], dict[
                 errors[label] = f"{type(e).__name__}: {e}"
     return listings, counts, errors
 
+
+def select_workday_shard(boards: list[dict], state: dict, requested_shards: int) -> tuple[list[dict], int, int]:
+    """Select one stable Workday shard and advance the persisted cursor."""
+    if not boards:
+        return [], 0, 1
+    shard_count = max(1, min(int(requested_shards), len(boards)))
+    shard_index = int(state.get("workday_shard_cursor", 0)) % shard_count
+    selected = [
+        board for board in boards
+        if zlib.crc32(board_key(board).encode("utf-8")) % shard_count == shard_index
+    ]
+    state["workday_shard_cursor"] = (shard_index + 1) % shard_count
+    return selected, shard_index, shard_count
+
 # --------------------------------------------------------------------------- main
 
 
@@ -715,11 +747,23 @@ def collect(cfg: dict, state: dict) -> tuple[list[Listing], dict[str, int], dict
     m_list, m_counts, m_errors = poll_boards(cfg["targets"], workers)
     listings += m_list; counts.update(m_counts); errors.update(m_errors)
 
+    auto_cfg = cfg["auto_targets"]
     auto = discover_boards(listings, cfg, state)
     fast = [b for b in auto if b["ats"] != "workday"]
     slow = [b for b in auto if b["ats"] == "workday"]
+    slow_selected, shard_index, shard_count = select_workday_shard(
+        slow, state, int(auto_cfg.get("workday_shards", 5))
+    )
+
+    fast_started = time.monotonic()
     a_list, a_counts, a_errors = poll_boards(fast, workers)
-    w_list, w_counts, w_errors = poll_boards(slow, int(cfg["auto_targets"].get("workday_workers", 3)))
+    fast_seconds = time.monotonic() - fast_started
+
+    workday_started = time.monotonic()
+    w_list, w_counts, w_errors = poll_boards(
+        slow_selected, int(auto_cfg.get("workday_workers", 6))
+    )
+    workday_seconds = time.monotonic() - workday_started
     a_list += w_list; a_counts.update(w_counts); a_errors.update(w_errors)
     listings += a_list
 
@@ -732,8 +776,20 @@ def collect(cfg: dict, state: dict) -> tuple[list[Listing], dict[str, int], dict
             known[k]["fails"] = known[k].get("fails", 0) + 1
             known[k]["last_fail"] = NOW.isoformat()
 
-    auto_stats = {"boards": len(auto), "ok": len(a_counts), "failed": len(a_errors),
-                  "postings": sum(a_counts.values()), "errors": a_errors}
+    auto_stats = {
+        "boards": len(fast) + len(slow_selected),
+        "known_boards": len(auto),
+        "ok": len(a_counts),
+        "failed": len(a_errors),
+        "postings": sum(a_counts.values()),
+        "errors": a_errors,
+        "fast_seconds": fast_seconds,
+        "workday_seconds": workday_seconds,
+        "workday_polled": len(slow_selected),
+        "workday_known": len(slow),
+        "workday_shard": shard_index + 1,
+        "workday_shards": shard_count,
+    }
     return listings, counts, errors, auto_stats
 
 
@@ -756,9 +812,11 @@ def check_targets(cfg: dict) -> int:
 
 
 def main() -> None:
+    run_started = time.monotonic()
+    app_dir = Path(__file__).resolve().parent
     ap = argparse.ArgumentParser()
-    ap.add_argument("--config", default="config.json")
-    ap.add_argument("--state", default="state.json")
+    ap.add_argument("--config", default=str(app_dir / "config.json"))
+    ap.add_argument("--state", default=str(app_dir / "state.json"))
     ap.add_argument("--dry-run", action="store_true", help="print instead of posting; don't save state")
     ap.add_argument("--seed", action="store_true", help="mark all current postings seen, alert nothing")
     ap.add_argument("--check-targets", action="store_true", help="verify ATS targets respond")
@@ -846,7 +904,9 @@ def main() -> None:
     if hours_since(state["last_heartbeat"]) >= cfg["heartbeat_every_hours"] and not first_run:
         summary = ", ".join(f"{k} {v}" for k, v in counts.items())
         dc.text(f"💓 Heartbeat — {len(counts)} sources OK, {len(errors)} failing · "
-                f"auto-boards {auto['ok']}/{auto['boards']} OK ({auto['postings']} postings) · tracking {len(seen)//2} postings\n`{summary}`"[:2000])
+                f"auto-boards {auto['ok']}/{auto['boards']} polled OK ({auto['postings']} postings) · "
+                f"Workday shard {auto['workday_shard']}/{auto['workday_shards']} "
+                f"({auto['workday_polled']}/{auto['workday_known']} boards) · tracking {len(seen)//2} postings\n`{summary}`"[:2000])
         state["last_heartbeat"] = now_iso
 
     # prune old seen keys
@@ -855,11 +915,16 @@ def main() -> None:
     state["runs"] += 1
     state.pop("_new_boards", None)
     if not args.dry_run:
-        Path(args.state).write_text(json.dumps(state, indent=0))
+        save_state(Path(args.state), state)
 
     mode = "SEED" if args.seed else ("FIRST RUN" if first_run else "run")
-    print(f"[{mode}] fetched {len(listings)} · auto-boards {auto['ok']}/{auto['boards']} ok · new {evaluated} · "
-          f"instant {len(instant)} · digest {len(digest)} · sent {sent} · errors {len(errors)} · tracking {len(state['seen'])//2}")
+    duration = time.monotonic() - run_started
+    print(f"[{mode}] fetched {len(listings)} · auto-boards {auto['ok']}/{auto['boards']} polled ok "
+          f"({auto['known_boards']} known) · fast ATS {auto['fast_seconds']:.1f}s · "
+          f"Workday shard {auto['workday_shard']}/{auto['workday_shards']} "
+          f"{auto['workday_polled']}/{auto['workday_known']} boards in {auto['workday_seconds']:.1f}s · "
+          f"new {evaluated} · instant {len(instant)} · digest {len(digest)} · sent {sent} · errors {len(errors)} · "
+          f"tracking {len(state['seen'])//2} · duration {duration:.1f}s")
     for label, msg in list(auto["errors"].items())[:15]:
         print(f"  auto-board failed {label}: {msg[:120]}")
 

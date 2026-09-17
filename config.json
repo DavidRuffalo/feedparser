@@ -1,5 +1,5 @@
 {
-  "_readme": "Edit freely. `auto_targets` discovers every Greenhouse/Lever/Ashby board that appears in the aggregator data and polls it directly, so `targets` is only for (a) companies that haven't posted yet this cycle, (b) Workday boards, (c) companies you want marked priority. Run `python watcher.py --check-targets` after changing targets; `--list-boards` shows what was auto-discovered.",
+  "_readme": "Edit freely. `auto_targets` discovers ATS boards from aggregator URLs. Greenhouse/Lever/Ashby boards run every scan; auto-discovered Workday boards rotate through `workday_shards` to keep scans fast. `targets` is for companies that have not posted yet, boards that must run every scan, or companies you want marked priority. Run `python watcher.py --check-targets` after changing targets; `--list-boards` shows what was auto-discovered.",
   "keywords": {
     "security": 3,
     "cyber": 3,
@@ -76,7 +76,8 @@
     ],
     "max_boards": 800,
     "workers": 24,
-    "workday_workers": 3,
+    "workday_workers": 6,
+    "workday_shards": 5,
     "workday_delay": 0.5,
     "exclude": [
       "atomicsemi",
