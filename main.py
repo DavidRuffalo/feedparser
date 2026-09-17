@@ -15,7 +15,7 @@ FEED_URLS = [
 ]
 
 # Your target roles
-KEYWORDS = ["security", "cloud", "linux", "network", "infrastructure", "sre", "devops", "systems"]
+KEYWORDS = ["e"]
 
 def fetch_and_notify():
     # Bypass SSL verification issues
@@ -25,7 +25,7 @@ def fetch_and_notify():
     
     # Only look at commits from the last 15 minutes
     now = datetime.now(timezone.utc)
-    time_threshold = now - timedelta(minutes=15)    
+    time_threshold = now - timedelta(days=30)    
     # Track links we've already alerted about during this run to prevent duplicates
     seen_links = set()
 
