@@ -9,9 +9,7 @@
     "infrastructure": 3,
     "sre": 3,
     "site reliability": 3,
-    "devops": 3,
-    "Software": 1,
-    "swe": 1
+    "devops": 3
   },
   "require_title": "\\b(intern|internship|co-?op)\\b",
   "exclude_title": [
@@ -26,11 +24,18 @@
     "\\bhardware\\b",
     "\\bmanufacturing\\b",
     "\\bproduct manag",
-    "\\bstrategist\\b",
     "\\bmarketing\\b",
     "\\bfinance\\b",
     "\\bhr\\b",
-    "\\bsales\\b"
+    "\\bsales\\b",
+    "\\bloss prevention\\b",
+    "\\btransportation\\b",
+    "\\bsupply chain\\b",
+    "\\bstore\\b",
+    "\\bfood\\b",
+    "\\breturning\\b",
+    "\\bformer\\b",
+    "\\bstrateg"
   ],
   "allowed_terms": [
     "Summer 2027"
@@ -55,6 +60,7 @@
   "digest_flush_at": 12,
   "heartbeat_every_hours": 24,
   "error_alert_every_hours": 6,
+  "stale_hours": 72,
   "us_only": true,
   "location_unknown_ok": true,
   "first_run_hours": 48,

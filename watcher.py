@@ -60,6 +60,7 @@ DEFAULT_CONFIG: dict = {
     "digest_flush_at": 12,
     "heartbeat_every_hours": 24,
     "error_alert_every_hours": 6,
+    "stale_hours": 72,              # postings older than this never ping instantly; they go to the digest
     "us_only": True,                # drop postings whose location is clearly outside the United States
     "location_unknown_ok": True,    # keep postings with no location / bare "Remote" / unrecognised city
     "first_run_hours": 48,          # on the very first run, only alert on postings newer than this
@@ -321,6 +322,32 @@ def src_ashby(t: dict) -> list[Listing]:
     return out
 
 
+_WD_MULTI = re.compile(r"^\s*\d+\s+locations?\s*$", re.I)
+
+
+def workday_resolve_location(l: Listing) -> None:
+    """Workday lists multi-site postings as '3 Locations'. Fetch the detail record to get real locations/country."""
+    if not l.source.startswith("workday:") or not _WD_MULTI.match(l.location or ""):
+        return
+    try:
+        p = urllib.parse.urlsplit(l.url)
+        parts = [x for x in p.path.split("/") if x]
+        segs = [x for x in parts if not _LOCALE.match(x)]        # drop en-US
+        site, path = segs[0], "/" + "/".join(segs[1:])
+        tenant = p.netloc.split(".")[0]
+        info = get_json(f"{p.scheme}://{p.netloc}/wday/cxs/{tenant}/{site}{path}",
+                        headers={"Accept": "application/json"}, timeout=20, retries=1).get("jobPostingInfo") or {}
+        locs = [info.get("location") or ""] + list(info.get("additionalLocations") or [])
+        country = ((info.get("country") or {}).get("descriptor") or "")
+        text = "; ".join(x for x in locs if x)
+        if country:
+            text = f"{text} ({country})" if text else country
+        if text:
+            l.location = text
+    except Exception:
+        pass                                                      # keep "N Locations"; filter treats it as unknown
+
+
 def src_workday(t: dict) -> list[Listing]:
     host = f"https://{t['tenant']}.{t.get('wd', 'wd5')}.myworkdayjobs.com"
     api = f"{host}/wday/cxs/{t['tenant']}/{t['site']}/jobs"
@@ -380,7 +407,7 @@ US_RE = re.compile(
 _CA_PROV = "ON|BC|QC|AB|MB|SK|NS|NB|NL|PE|YT|NT|NU"
 FOREIGN_RE = re.compile(
     r"\b(canada|canadian|toronto|vancouver|montreal|montr[ée]al|ottawa|calgary|waterloo|ontario|quebec|british columbia|alberta"
-    r"|united kingdom|uk|u\.k\.|england|london|manchester|cambridge uk|edinburgh|scotland|ireland|dublin"
+    r"|united kingdom|uk|u\.k\.|england|london|manchester|cambridge uk|edinburgh|scotland|ireland|dublin|cork|galway|waterford|limerick"
     r"|germany|berlin|munich|frankfurt|hamburg|france|paris|netherlands|amsterdam|belgium|brussels|switzerland|zurich|z[üu]rich|geneva"
     r"|sweden|stockholm|norway|oslo|denmark|copenhagen|finland|helsinki|poland|warsaw|krak[óo]w|czech|prague|austria|vienna"
     r"|spain|madrid|barcelona|portugal|lisbon|italy|milan|rome|greece|athens|romania|bucharest|hungary|budapest|estonia|tallinn"
@@ -418,7 +445,7 @@ def compile_rules(cfg: dict) -> dict:
     return {
         "require": re.compile(cfg["require_title"], re.I),
         "exclude": [re.compile(p, re.I) for p in cfg["exclude_title"]],
-        "kw": {kw: re.compile(r"\b" + re.escape(kw) + r"\w*", re.I) for kw in cfg["keywords"]},
+        "kw": {kw: re.compile(r"\b" + re.escape(kw) + (r"\w*" if len(kw) >= 5 else r"\b"), re.I) for kw in cfg["keywords"]},
         "allowed_terms": [a.lower() for a in cfg["allowed_terms"]],
         "priority": {norm_text(c) for c in cfg["priority_companies"]} | {norm_text(t["company"]) for t in cfg["targets"]},
     }
@@ -433,6 +460,8 @@ def evaluate(l: Listing, cfg: dict, rx: dict) -> Optional[str]:
 
     if cfg.get("us_only", True):
         us = is_us_location(l.location)
+        if us is None:
+            us = is_us_location(l.title)          # titles often carry "- Cincinnati OH" or "(Dublin, Ireland)"
         if us is False or (us is None and not cfg.get("location_unknown_ok", True)):
             return None
 
@@ -465,7 +494,10 @@ def evaluate(l: Listing, cfg: dict, rx: dict) -> Optional[str]:
     if not matched and not any_intern_ok:
         return None
     l.score, l.matched = score, matched
-    return "instant" if (title_hit or any_intern_ok) and score >= cfg["instant_min_score"] else "digest"
+    instant = (title_hit or any_intern_ok) and score >= cfg["instant_min_score"]
+    if instant and age is not None and age > cfg.get("stale_hours", 72):
+        instant = False                      # old posting: everyone has seen it; don't buzz the phone
+    return "instant" if instant else "digest"
 
 
 # --------------------------------------------------------------------------- discord
@@ -771,6 +803,7 @@ def main() -> None:
         seen[k_url] = now_iso
         seen[k_ct] = now_iso
         evaluated += 1
+        workday_resolve_location(l)
         verdict = evaluate(l, cfg, rx)
         if verdict is None:
             continue
