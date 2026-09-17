@@ -7,8 +7,13 @@ from datetime import datetime, timezone, timedelta
 
 # Pulls your hidden webhook from GitHub Secrets
 WEBHOOK_URL = os.environ.get("DISCORD_WEBHOOK")
-# The Zshah101 Automated Tracker RSS Feed
-FEED_URL = "https://github.com/zshah101/Automated-List-Of-Summer-2027-and-Fall-2026-Tech-Internships/commits/main.atom"
+
+# The top internship tracker RSS Feeds
+FEED_URLS = [
+    "https://github.com/zshah101/Automated-List-Of-Summer-2027-and-Fall-2026-Tech-Internships/commits/main.atom",
+    "https://github.com/SimplifyJobs/Summer2027-Internships/commits/dev.atom"
+]
+
 # Your target roles
 KEYWORDS = ["security", "cloud", "linux", "network", "infrastructure", "sre", "devops", "systems"]
 
@@ -18,43 +23,60 @@ def fetch_and_notify():
     ctx.check_hostname = False
     ctx.verify_mode = ssl.CERT_NONE
     
-    req = urllib.request.Request(FEED_URL, headers={'User-Agent': 'Mozilla/5.0'})
-    response = urllib.request.urlopen(req, context=ctx)
-    xml_data = response.read()
-    
-    root = ET.fromstring(xml_data)
-    ns = {'atom': 'http://www.w3.org/2005/Atom'}
-    
-    # Only look at commits from the last 15 minutes to avoid spamming you with old roles
+    # Only look at commits from the last 15 minutes
     now = datetime.now(timezone.utc)
     time_threshold = now - timedelta(minutes=15)
+    
+    # Track links we've already alerted about during this run to prevent duplicates
+    seen_links = set()
 
-    for entry in root.findall('atom:entry', ns):
-        title = entry.find('atom:title', ns).text
-        link = entry.find('atom:link', ns).attrib['href']
-        updated_str = entry.find('atom:updated', ns).text
-        
+    for feed_url in FEED_URLS:
         try:
-            # Format the timestamp
-            updated_time = datetime.fromisoformat(updated_str.replace('Z', '+00:00'))
-        except ValueError:
-            continue
+            req = urllib.request.Request(feed_url, headers={'User-Agent': 'Mozilla/5.0'})
+            response = urllib.request.urlopen(req, context=ctx)
+            xml_data = response.read()
             
-        if updated_time > time_threshold:
-            # If the commit title has one of your keywords, fire the alert!
-            if any(kw in title.lower() for kw in KEYWORDS):
-                send_discord_alert(title, link)
+            root = ET.fromstring(xml_data)
+            ns = {'atom': 'http://www.w3.org/2005/Atom'}
+            
+            for entry in root.findall('atom:entry', ns):
+                title = entry.find('atom:title', ns).text
+                link = entry.find('atom:link', ns).attrib['href']
+                updated_str = entry.find('atom:updated', ns).text
+                
+                try:
+                    # Format the timestamp
+                    updated_time = datetime.fromisoformat(updated_str.replace('Z', '+00:00'))
+                except ValueError:
+                    continue
+                    
+                if updated_time > time_threshold:
+                    # If the commit has a keyword and we haven't sent it yet, fire the alert!
+                    if link not in seen_links and any(kw in title.lower() for kw in KEYWORDS):
+                        seen_links.add(link)
+                        send_discord_alert(title, link, feed_url)
+                        
+        except Exception as e:
+            print(f"Failed to process feed {feed_url}: {e}")
 
-def send_discord_alert(title, link):
+def send_discord_alert(title, link, source_feed):
     if not WEBHOOK_URL:
         print("No Webhook URL found. Check your GitHub Secrets!")
         return
         
+    # Quick formatting to show you which repository found the role
+    repo_name = "Zshah101" if "zshah101" in source_feed else "Simplify / Pitt CSC"
+        
     payload = {
-        "content": f"🚨 **NEW ROLE DETECTED**\n\n**Commit:** {title}\n**Link:** {link}"
+        "content": f"🚨 **NEW ROLE DETECTED ({repo_name})**\n\n**Commit:** {title}\n**Link:** {link}"
     }
+    
     req = urllib.request.Request(WEBHOOK_URL, data=json.dumps(payload).encode(), headers={'Content-Type': 'application/json'})
-    urllib.request.urlopen(req)
+    
+    try:
+        urllib.request.urlopen(req)
+    except Exception as e:
+        print(f"Failed to send alert to Discord: {e}")
 
 if __name__ == "__main__":
     fetch_and_notify()
