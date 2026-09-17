@@ -45,9 +45,15 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add state.json
-          if ! git diff --cached --quiet; then
+          cp state.json /tmp/state.json
+          for attempt in 1 2 3 4; do
+            git fetch origin "$GITHUB_REF_NAME"
+            git reset --hard "origin/$GITHUB_REF_NAME"      # take whatever is newest on main (config edits etc.)
+            cp /tmp/state.json state.json                    # ...and put this run's state on top
+            git add state.json
+            if git diff --cached --quiet; then echo "state unchanged"; exit 0; fi
             git commit -m "state: $(date -u +%Y-%m-%dT%H:%MZ)"
-            git pull --rebase origin "${GITHUB_REF_NAME}" || true
-            git push
-          fi
+            if git push origin HEAD:"$GITHUB_REF_NAME"; then exit 0; fi
+            echo "push rejected (attempt $attempt), retrying"; sleep $((RANDOM % 8 + 2))
+          done
+          echo "could not push state after 4 attempts"; exit 1
