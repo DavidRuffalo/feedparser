@@ -2,12 +2,11 @@
   "_readme": "Edit freely. Run `python watcher.py --check-targets` after changing targets. Board tokens come from the company's careers URL: boards.greenhouse.io/<board> · jobs.lever.co/<site> · jobs.ashbyhq.com/<board> · <tenant>.<wd#>.myworkdayjobs.com/<site>",
 
   "keywords": {
-    "security": 3, "cyber": 3, "cloud": 3, "linux": 3, "network": 3,
-    "infrastructure": 3, "sre": 3, "site reliability": 3, "devops": 3,
-    "system": 2, "platform": 2
-  },
+  "security": 3, "cyber": 3, "cloud": 3, "linux": 3, "network": 3,
+  "infrastructure": 3, "sre": 3, "site reliability": 3, "devops": 3
+},
   "require_title": "\\b(intern|internship|co-?op)\\b",
-  "exclude_title": ["\\bsenior\\b", "\\bph\\.?d\\b", "\\bmba\\b", "\\bdirector\\b", "\\bmanager\\b"],
+  "exclude_title": ["\\bsenior\\b", "\\bph\\.?d\\b", "\\bmba\\b", "\\bdirector\\b", "\\bmanager\\b", "\\bmechanical\\b", "\\belectrical\\b", "\\bavionics\\b", "\\bhardware\\b", "\\bmanufacturing\\b", "\\bproduct manag", "\\bstrategist\\b", "\\bmarketing\\b", "\\bfinance\\b", "\\bhr\\b", "\\bsales\\b"],
   "allowed_terms": ["Summer 2027"],
   "priority_companies": ["Jane Street", "Hudson River Trading", "Citadel", "Two Sigma", "Amazon", "Microsoft", "Google", "Meta", "Apple", "CrowdStrike", "Palo Alto Networks"],
   "priority_bonus": 3,
