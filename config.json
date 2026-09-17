@@ -26,7 +26,6 @@
     {"company": "Stripe",            "ats": "greenhouse", "board": "stripe"},
     {"company": "Databricks",        "ats": "greenhouse", "board": "databricks"},
     {"company": "Okta",              "ats": "greenhouse", "board": "okta"},
-    {"company": "HashiCorp",         "ats": "greenhouse", "board": "hashicorp"},
     {"company": "Anduril",           "ats": "greenhouse", "board": "andurilindustries"},
     {"company": "Rocket Lab",        "ats": "greenhouse", "board": "rocketlab"},
     {"company": "Astranis",          "ats": "greenhouse", "board": "astranis"},
@@ -40,8 +39,8 @@
     {"company": "Saronic",           "ats": "ashby", "board": "saronic"},
     {"company": "Ramp",              "ats": "ashby", "board": "ramp"},
 
-    {"company": "NVIDIA",            "ats": "workday", "tenant": "nvidia",           "wd": "wd5", "site": "NVIDIAExternalCareerSite", "search": "intern"},
-    {"company": "Motorola Solutions","ats": "workday", "tenant": "motorolasolutions","wd": "wd5", "site": "Careers",                  "search": "intern"},
-    {"company": "Northrop Grumman",  "ats": "workday", "tenant": "ngc",              "wd": "wd1", "site": "Northrop_Grumman_External_Site", "search": "intern"}
+    {"company": "NVIDIA",            "ats": "workday", "tenant": "nvidia",           "wd": "wd5", "site": "NVIDIAExternalCareerSite", "search": "intern", "max":300},
+    {"company": "Motorola Solutions","ats": "workday", "tenant": "motorolasolutions","wd": "wd5", "site": "Careers",                  "search": "intern", "max":300},
+       {"company": "Northrop Grumman", "ats": "workday", "tenant": "ngc", "wd": "wd1", "site": "Northrop_Grumman_External_Site", "search": "intern", "max": 600}
   ]
 }
