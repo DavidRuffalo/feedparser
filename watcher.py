@@ -104,7 +104,7 @@ class Listing:
 # --------------------------------------------------------------------------- helpers
 
 
-def http(url: str, data: bytes | None = None, headers: dict | None = None, timeout: int = 30) -> str:
+def http(url: str, data: bytes | None = None, headers: dict | None = None, timeout: int = 60) -> str:
     req = urllib.request.Request(url, data=data, headers={**UA, **(headers or {})},
                                  method="POST" if data else "GET")
     with urllib.request.urlopen(req, timeout=timeout) as resp:
