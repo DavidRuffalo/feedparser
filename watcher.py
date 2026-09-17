@@ -77,7 +77,9 @@ DEFAULT_CONFIG: dict = {
         "enabled": True,
         "ats": ["greenhouse", "lever", "ashby"],   # add "workday" if you accept slower runs
         "max_boards": 800,
-        "workers": 24,
+        "workers": 24,                              # concurrency for Greenhouse / Lever / Ashby
+        "workday_workers": 3,                       # Workday tenants share infra and rate-limit hard; keep this low
+        "workday_delay": 0.5,                       # seconds between Workday page requests
         "exclude": [],                              # board tokens to skip, e.g. ["andurilindustries"]
     },
 }
@@ -115,11 +117,20 @@ class Listing:
 # --------------------------------------------------------------------------- helpers
 
 
-def http(url: str, data: bytes | None = None, headers: dict | None = None, timeout: int = 60) -> str:
+def http(url: str, data: bytes | None = None, headers: dict | None = None, timeout: int = 60, retries: int = 3) -> str:
     req = urllib.request.Request(url, data=data, headers={**UA, **(headers or {})},
                                  method="POST" if data else "GET")
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        return resp.read().decode("utf-8", errors="replace")
+    for attempt in range(retries):
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                return resp.read().decode("utf-8", errors="replace")
+        except urllib.error.HTTPError as e:
+            if e.code in (429, 500, 502, 503, 504) and attempt < retries - 1:
+                wait = e.headers.get("Retry-After")
+                time.sleep(min(float(wait) if wait and wait.isdigit() else 2.0 * (attempt + 1), 15))
+                continue
+            raise
+    raise RuntimeError("unreachable")
 
 
 def get_json(url: str, **kw):
@@ -332,6 +343,7 @@ def src_workday(t: dict) -> list[Listing]:
         if len(posts) < page:
             break
         offset += page
+        time.sleep(float(t.get("delay", 0.5)))
     return out
 
 
@@ -625,10 +637,18 @@ def discover_boards(listings: list[Listing], cfg: dict, state: dict) -> list[dic
             if l.company and (not rec.get("company") or rec["company"] == tok):
                 rec["company"] = l.company
 
-    # newest-seen first, cap the count
+    # newest-seen first, cap the count; skip boards that have failed 3+ times (retry those once a day)
     boards = sorted(known.values(), key=lambda r: r.get("last_seen", ""), reverse=True)
-    boards = [b for b in boards if b["ats"] in allowed and board_key(b) not in manual]
-    return boards[: int(ac.get("max_boards", 800))]
+    out = []
+    for b in boards:
+        if b["ats"] not in allowed or board_key(b) in manual:
+            continue
+        if b.get("fails", 0) >= 3 and hours_since(b.get("last_fail")) < 24:
+            continue
+        if b["ats"] == "workday":
+            b = {**b, "delay": float(ac.get("workday_delay", 0.5))}
+        out.append(b)
+    return out[: int(ac.get("max_boards", 800))]
 
 
 def poll_boards(targets: list[dict], workers: int) -> tuple[list[Listing], dict[str, int], dict[str, str]]:
@@ -664,8 +684,22 @@ def collect(cfg: dict, state: dict) -> tuple[list[Listing], dict[str, int], dict
     listings += m_list; counts.update(m_counts); errors.update(m_errors)
 
     auto = discover_boards(listings, cfg, state)
-    a_list, a_counts, a_errors = poll_boards(auto, workers)
+    fast = [b for b in auto if b["ats"] != "workday"]
+    slow = [b for b in auto if b["ats"] == "workday"]
+    a_list, a_counts, a_errors = poll_boards(fast, workers)
+    w_list, w_counts, w_errors = poll_boards(slow, int(cfg["auto_targets"].get("workday_workers", 3)))
+    a_list += w_list; a_counts.update(w_counts); a_errors.update(w_errors)
     listings += a_list
+
+    known = state.get("boards", {})
+    for k in a_counts:
+        if k in known:
+            known[k]["fails"] = 0
+    for k, msg in a_errors.items():
+        if k in known and re.search(r"HTTP Error (404|410|422)", msg):
+            known[k]["fails"] = known[k].get("fails", 0) + 1
+            known[k]["last_fail"] = NOW.isoformat()
+
     auto_stats = {"boards": len(auto), "ok": len(a_counts), "failed": len(a_errors),
                   "postings": sum(a_counts.values()), "errors": a_errors}
     return listings, counts, errors, auto_stats

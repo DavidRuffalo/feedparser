@@ -68,6 +68,8 @@
     ],
     "max_boards": 800,
     "workers": 24,
+    "workday_workers": 3,
+    "workday_delay": 0.5,
     "exclude": [
       "atomicsemi",
       "whatnot"
