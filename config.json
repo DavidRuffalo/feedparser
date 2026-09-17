@@ -53,6 +53,8 @@
   "digest_flush_at": 12,
   "heartbeat_every_hours": 24,
   "error_alert_every_hours": 6,
+  "us_only": true,
+  "location_unknown_ok": true,
   "first_run_hours": 48,
   "seen_ttl_days": 120,
   "discord_role_id": "",

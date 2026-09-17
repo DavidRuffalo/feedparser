@@ -60,6 +60,8 @@ DEFAULT_CONFIG: dict = {
     "digest_flush_at": 12,
     "heartbeat_every_hours": 24,
     "error_alert_every_hours": 6,
+    "us_only": True,                # drop postings whose location is clearly outside the United States
+    "location_unknown_ok": True,    # keep postings with no location / bare "Remote" / unrecognised city
     "first_run_hours": 48,          # on the very first run, only alert on postings newer than this
     "seen_ttl_days": 120,
     "discord_role_id": "",          # optional: numeric role ID to @mention so your phone buzzes
@@ -346,6 +348,55 @@ def target_label(t: dict) -> str:
     return f"{t['ats']}:{ident}"
 
 
+
+# --------------------------------------------------------------------------- location (US filter)
+
+_US_STATES = ("AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|"
+              "OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY|DC")
+_US_STATE_NAMES = ("alabama|alaska|arizona|arkansas|california|colorado|connecticut|delaware|florida|georgia|hawaii|idaho|"
+                   "illinois|indiana|iowa|kansas|kentucky|louisiana|maine|maryland|massachusetts|michigan|minnesota|mississippi|"
+                   "missouri|montana|nebraska|nevada|new hampshire|new jersey|new mexico|new york|north carolina|north dakota|ohio|"
+                   "oklahoma|oregon|pennsylvania|rhode island|south carolina|south dakota|tennessee|texas|utah|vermont|virginia|"
+                   "washington|west virginia|wisconsin|wyoming|puerto rico")
+US_RE = re.compile(
+    r"\b(united states|u\.s\.a?\.?|usa|us)\b"                   # explicit country
+    r"|\b(" + _US_STATE_NAMES + r")\b"                          # full state names
+    r"|(?:,|-|\s)\s*(" + _US_STATES + r")\b(?![a-z])"           # ", TX" / "-Ohio-" style / "US CA"
+    r"|\b\d{5}(?:-\d{4})?\b"                                    # zip code
+    r"|\b(nyc|sf bay|bay area|silicon valley|remote\s*[-–(]?\s*us)\b",
+    re.I)
+_CA_PROV = "ON|BC|QC|AB|MB|SK|NS|NB|NL|PE|YT|NT|NU"
+FOREIGN_RE = re.compile(
+    r"\b(canada|canadian|toronto|vancouver|montreal|montr[ée]al|ottawa|calgary|waterloo|ontario|quebec|british columbia|alberta"
+    r"|united kingdom|uk|u\.k\.|england|london|manchester|cambridge uk|edinburgh|scotland|ireland|dublin"
+    r"|germany|berlin|munich|frankfurt|hamburg|france|paris|netherlands|amsterdam|belgium|brussels|switzerland|zurich|z[üu]rich|geneva"
+    r"|sweden|stockholm|norway|oslo|denmark|copenhagen|finland|helsinki|poland|warsaw|krak[óo]w|czech|prague|austria|vienna"
+    r"|spain|madrid|barcelona|portugal|lisbon|italy|milan|rome|greece|athens|romania|bucharest|hungary|budapest|estonia|tallinn"
+    r"|india|bangalore|bengaluru|hyderabad|mumbai|pune|chennai|delhi|gurgaon|gurugram|noida|kolkata"
+    r"|singapore|japan|tokyo|osaka|korea|seoul|taiwan|taipei|china|shanghai|beijing|shenzhen|hangzhou|hong kong|vietnam|hanoi|ho chi minh"
+    r"|philippines|manila|indonesia|jakarta|malaysia|kuala lumpur|thailand|bangkok"
+    r"|australia|sydney|melbourne au|brisbane|new zealand|auckland|wellington"
+    r"|israel|tel aviv|herzliya|haifa|uae|dubai|abu dhabi|saudi|riyadh|qatar|doha|turkey|istanbul|egypt|cairo|nigeria|lagos|kenya|nairobi|south africa|cape town|johannesburg"
+    r"|brazil|s[ãa]o paulo|mexico|ciudad de m[ée]xico|mexico city|guadalajara|monterrey|argentina|buenos aires|chile|santiago|colombia|bogot[áa]|peru|lima"
+    r"|emea|apac|latam)\b"
+    r"|,\s*(" + _CA_PROV + r")\b(?![a-z])",
+    re.I)
+
+
+def is_us_location(location: str) -> Optional[bool]:
+    """True = clearly US, False = clearly outside the US, None = can't tell (blank, 'Remote', unknown city)."""
+    if not location or not location.strip():
+        return None
+    # any segment that is US → US (multi-location roles usually list several)
+    segs = re.split(r"[;|/]|\s+\+\d+\s+more|\band\b", location)
+    us = any(US_RE.search(seg) for seg in segs)
+    foreign = any(FOREIGN_RE.search(seg) for seg in segs)
+    if us:
+        return True
+    if foreign:
+        return False
+    return None
+
 # --------------------------------------------------------------------------- filtering & scoring
 
 TERM_IN_TITLE = re.compile(r"\b(summer|fall|autumn|spring|winter)\s*'?(20\d\d|\d\d)\b", re.I)
@@ -367,6 +418,11 @@ def evaluate(l: Listing, cfg: dict, rx: dict) -> Optional[str]:
         return None
     if any(r.search(l.title) for r in rx["exclude"]):
         return None
+
+    if cfg.get("us_only", True):
+        us = is_us_location(l.location)
+        if us is False or (us is None and not cfg.get("location_unknown_ok", True)):
+            return None
 
     term_text = (l.term or "").lower()
     if not term_text:
