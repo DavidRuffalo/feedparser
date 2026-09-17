@@ -63,7 +63,8 @@
     "ats": [
       "greenhouse",
       "lever",
-      "ashby"
+      "ashby",
+      "workday"
     ],
     "max_boards": 800,
     "workers": 24,
