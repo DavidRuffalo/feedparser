@@ -77,7 +77,7 @@
     "max_boards": 800,
     "workers": 24,
     "workday_workers": 6,
-    "workday_shards": 5,
+    "workday_shards": 2,
     "workday_delay": 0.5,
     "exclude": [
       "atomicsemi",
