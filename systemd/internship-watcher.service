@@ -1,0 +1,11 @@
+[Unit]
+Description=Internship watcher (one run)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=%i
+WorkingDirectory=/home/%i/internship-watcher
+EnvironmentFile=/home/%i/internship-watcher/.env
+ExecStart=/usr/bin/python3 watcher.py
