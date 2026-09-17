@@ -75,7 +75,7 @@ DEFAULT_CONFIG: dict = {
     # Auto-discover ATS boards from the job URLs in the aggregator data, and poll them directly.
     "auto_targets": {
         "enabled": True,
-        "ats": ["greenhouse", "lever", "ashby", "workday"],   # add "workday" if you accept slower runs
+        "ats": ["greenhouse", "lever", "ashby"],   # add "workday" if you accept slower runs
         "max_boards": 800,
         "workers": 24,
         "exclude": [],                              # board tokens to skip, e.g. ["andurilindustries"]
@@ -577,13 +577,13 @@ def board_from_url(url: str) -> Optional[dict]:
             tok = qs.get("for")
         else:
             tok = parts[0] if parts else None
-        return {"ats": "greenhouse", "board": tok} if tok and _SLUG.match(tok) else None
+        return {"ats": "greenhouse", "board": tok.lower()} if tok and _SLUG.match(tok) else None
 
     if host == "jobs.lever.co":
-        return {"ats": "lever", "site": parts[0]} if parts and _SLUG.match(parts[0]) else None
+        return {"ats": "lever", "site": parts[0].lower()} if parts and _SLUG.match(parts[0]) else None
 
     if host == "jobs.ashbyhq.com":
-        return {"ats": "ashby", "board": parts[0]} if parts and _SLUG.match(parts[0]) else None
+        return {"ats": "ashby", "board": parts[0].lower()} if parts and _SLUG.match(parts[0]) else None
 
     m = re.match(r"^([a-z0-9-]+)\.(wd\d+)\.myworkdayjobs\.com$", host)
     if m:

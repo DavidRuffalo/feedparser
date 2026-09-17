@@ -67,7 +67,10 @@
     ],
     "max_boards": 800,
     "workers": 24,
-    "exclude": []
+    "exclude": [
+      "atomicsemi",
+      "whatnot"
+    ]
   },
   "targets": [
     {
