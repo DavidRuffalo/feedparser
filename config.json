@@ -9,7 +9,8 @@
     "infrastructure": 3,
     "sre": 3,
     "site reliability": 3,
-    "devops": 3
+    "devops": 3,
+    "Software Engineer": 3,
   },
   "require_title": "\\b(intern|internship|co-?op)\\b",
   "exclude_title": [
