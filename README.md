@@ -52,6 +52,20 @@ journalctl -u internship-watcher@$USER -n 30   # logs
 ```
 If you run it on a box, disable the GitHub cron (delete the `schedule:` block) so you don't double-alert.
 
+## Auto-discovered boards
+
+Every run, the watcher reads the job URLs in the aggregator data, recognises Greenhouse / Lever / Ashby
+board tokens, and polls those boards directly and concurrently. That gives you direct-from-source speed for
+**every company that has posted an internship this cycle**, with no manual list. Boards are remembered in
+`state.json`, so a company stays watched even after its listing drops off the aggregators.
+
+- `python watcher.py --list-boards` — see what's been discovered
+- `auto_targets.exclude` — board tokens to skip
+- `auto_targets.ats` — add `"workday"` to include Workday tenants (slower; each needs several requests)
+- A newly discovered board only alerts on postings under 48h old, so adding hundreds at once won't flood you
+- Auto-board failures are counted in the heartbeat, not sent as individual ⚠️ alerts
+- Auto-discovered companies are **not** priority; only `targets` and `priority_companies` are
+
 ## Tuning `config.json`
 
 | key | what it does |
@@ -61,7 +75,8 @@ If you run it on a box, disable the GitHub cron (delete the `schedule:` block) s
 | `allowed_terms` | keep postings whose stated term matches (`["Summer 2027"]`); postings with no term are kept |
 | `priority_companies` | alert on **any** internship from these even without a keyword hit. All `targets` are priority automatically. |
 | `instant_min_score` | raise to 5+ if you're getting too many pings |
-| `targets` | boards polled directly. Token = the slug in the careers URL. Run `--check-targets` after edits. |
+| `targets` | boards polled directly *and* marked priority. Mostly for companies that haven't posted yet, and Workday. Run `--check-targets` after edits. |
+| `auto_targets` | see "Auto-discovered boards" above |
 
 Finding board tokens:
 - `boards.greenhouse.io/<board>` or `job-boards.greenhouse.io/<board>` → `"ats":"greenhouse","board":"<board>"`
